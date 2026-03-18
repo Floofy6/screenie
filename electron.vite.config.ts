@@ -20,9 +20,6 @@ export default defineConfig({
           format: 'cjs',
           entryFileNames: 'index.cjs'
         }
-      },
-      input: {
-        index: join(__dirname, 'src/preload/index.ts')
       }
     }
   },

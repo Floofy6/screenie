@@ -1,4 +1,4 @@
-import type { CaptureResult, Uploader } from '@shared/types';
+import type { Uploader } from '@shared/types';
 
 export const noUploader: Uploader = {
   upload: async () => {
@@ -13,4 +13,3 @@ export function createUploader(): Uploader {
   // Hook for future upload integrations (Imgur/S3/private endpoint/etc.).
   return noUploader;
 }
-

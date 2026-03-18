@@ -16,11 +16,11 @@ function buildOverlayUrl(base: string): string {
   return base;
 }
 
-function getTargetDisplay(parent: BrowserWindow | null) {
-  return screen.getDisplayMatching(parent ? parent.getBounds() : screen.getPrimaryDisplay().bounds);
+function getTargetDisplay() {
+  return screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
 }
 
-async function ensureOverlayWindow(options: SelectionOptions, targetDisplay = getTargetDisplay(options.parent)): Promise<BrowserWindow> {
+async function ensureOverlayWindow(options: SelectionOptions, targetDisplay = getTargetDisplay()): Promise<BrowserWindow> {
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     overlayWindow.setBounds({
       x: targetDisplay.bounds.x,
@@ -77,15 +77,14 @@ async function ensureOverlayWindow(options: SelectionOptions, targetDisplay = ge
 }
 
 export async function warmRegionOverlay(options: SelectionOptions): Promise<void> {
-  const targetDisplay = getTargetDisplay(options.parent);
+  const targetDisplay = getTargetDisplay();
   const window = await ensureOverlayWindow(options, targetDisplay);
   window.webContents.send('capture:region:prepare', { displayId: targetDisplay.id });
   window.hide();
 }
 
 export async function captureRegion(options: SelectionOptions): Promise<SelectionRequest | null> {
-  const { parent } = options;
-  const targetDisplay = getTargetDisplay(parent);
+  const targetDisplay = getTargetDisplay();
   const window = await ensureOverlayWindow(options, targetDisplay);
   window.webContents.send('capture:region:prepare', { displayId: targetDisplay.id });
   window.show();

@@ -45,7 +45,7 @@ type AnnotationImagePayload = {
   height: number;
 };
 
-const status = document.getElementById('status') as HTMLDivElement;
+const statusElement = document.getElementById('status') as HTMLDivElement;
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d');
 const toolbarButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('button[data-tool]'));
@@ -56,7 +56,7 @@ const clearButton = document.getElementById('clear') as HTMLButtonElement;
 const saveButton = document.getElementById('save') as HTMLButtonElement;
 const cancelButton = document.getElementById('cancel') as HTMLButtonElement;
 
-if (!canvas || !ctx || !status || !window.screenieMarkupAPI) {
+if (!canvas || !ctx || !statusElement || !window.screenieMarkupAPI) {
   throw new Error('Annotation UI not fully initialized.');
 }
 
@@ -282,7 +282,7 @@ const continueDrawing = (event: PointerEvent) => {
 const startLoad = async () => {
   const payload = (await window.screenieMarkupAPI.getImage()) as AnnotationImagePayload | null;
   if (!payload?.dataUrl) {
-    status.textContent = 'Failed to load image.';
+    statusElement.textContent = 'Failed to load image.';
     return;
   }
 
@@ -303,7 +303,7 @@ const startLoad = async () => {
 
     imageLoaded = true;
     redraw();
-    status.textContent = `Image loaded (${sourceWidth} x ${sourceHeight}). Tools: 1 Pen, 2 Rectangle, 3 Arrow, 4 Highlight, Cmd/Ctrl+Enter Save.`;
+    statusElement.textContent = `Image loaded (${sourceWidth} x ${sourceHeight}). Tools: 1 Pen, 2 Rectangle, 3 Arrow, 4 Highlight, Cmd/Ctrl+Enter Save.`;
   };
   image.src = payload.dataUrl;
 };

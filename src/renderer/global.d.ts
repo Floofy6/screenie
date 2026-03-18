@@ -1,4 +1,4 @@
-import type { CaptureMode, CaptureResult, CaptureRequest, CaptureSettings, RegionSelection } from '@shared/types';
+import type { CaptureResult, CaptureRequest, CaptureSettings, RegionSelection } from '@shared/types';
 
 declare global {
   interface Window {

@@ -8,11 +8,19 @@ function normalizeCloseBehavior(value: unknown): WindowCloseBehavior {
   return value === 'hide-to-tray' ? 'hide-to-tray' : 'close';
 }
 
+function normalizeShortcutValue(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 function normalizeShortcuts(parsed: Partial<CaptureSettings>, defaults: CaptureSettings): CaptureSettings['shortcuts'] {
   const merged = {
     ...defaults.shortcuts,
     ...(parsed.shortcuts ?? {})
   };
+
+  merged.fullscreen = normalizeShortcutValue(merged.fullscreen);
+  merged.window = normalizeShortcutValue(merged.window);
+  merged.region = normalizeShortcutValue(merged.region);
 
   if (merged.region === 'CommandOrControl+Shift+3') {
     merged.region = DEFAULT_REGION_SHORTCUT;
@@ -46,7 +54,7 @@ export class SettingsStore {
         shortcuts: normalizeShortcuts(parsed, defaults)
       };
       return this.cache;
-    } catch (_error) {
+    } catch {
       await this.set(defaults);
       this.cache = defaults;
       return defaults;

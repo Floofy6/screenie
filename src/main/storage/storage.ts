@@ -41,6 +41,28 @@ function formatFileName(template: string, input: { mode: CaptureMode; sourceName
   return `${normalized}.png`;
 }
 
+async function writeUniqueCaptureImage(outputDirectory: string, outputFileName: string, buffer: Buffer): Promise<string> {
+  const extension = path.extname(outputFileName) || '.png';
+  const baseName = path.basename(outputFileName, extension);
+
+  for (let attempt = 0; attempt < 1000; attempt += 1) {
+    const suffix = attempt === 0 ? '' : `-${attempt + 1}`;
+    const candidatePath = path.join(outputDirectory, `${baseName}${suffix}${extension}`);
+
+    try {
+      await fs.writeFile(candidatePath, buffer, { flag: 'wx' });
+      return candidatePath;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error('Could not find an available filename for the new capture.');
+}
+
 export async function resolveOutputDirectory(configuredPath: string): Promise<string> {
   const fallback = await getDefaultOutputDirectory();
   const trimmed = configuredPath.trim();
@@ -69,8 +91,7 @@ export async function writeCaptureImage(params: {
   });
 
   const safeName = outputFileName.includes('.png') ? outputFileName : `${outputFileName}.png`;
-  const filePath = path.join(resolvedDir, safeName);
-  await fs.writeFile(filePath, params.buffer);
+  const filePath = await writeUniqueCaptureImage(resolvedDir, safeName, params.buffer);
   const createdAt = new Date().toISOString();
   return {
     id: params.id ?? generateCaptureId(),

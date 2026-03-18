@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useEffectEvent, useMemo, useState } from 'react';
 import type { CaptureMode, CaptureResult, CaptureSettings, WindowCloseBehavior } from '@shared/types';
 
 type TabId = 'capture' | 'history' | 'settings';
@@ -7,6 +7,11 @@ type CaptureState = {
   capture?: CaptureResult;
   error?: string;
   cancelled?: boolean;
+};
+
+type SettingsNotice = {
+  type: 'success' | 'error';
+  message: string;
 };
 
 const tabs: Array<{ id: TabId; label: string; blurb: string }> = [
@@ -114,6 +119,7 @@ function App() {
   const [hotRegion, setHotRegion] = useState('');
   const [directory, setDirectory] = useState('');
   const [closeBehavior, setCloseBehavior] = useState<WindowCloseBehavior>('hide-to-tray');
+  const [settingsNotice, setSettingsNotice] = useState<SettingsNotice | null>(null);
 
   const sortedCaptures = useMemo(
     () => [...captures].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()),
@@ -141,15 +147,15 @@ function App() {
     setCloseBehavior(settings.closeBehavior);
   };
 
-  const loadSettings = async () => {
+  const loadSettings = useEffectEvent(async () => {
     const settings = await window.screenieAPI.getSettings();
     applySettings(settings);
-  };
+  });
 
-  const loadCaptures = async () => {
+  const loadCaptures = useEffectEvent(async () => {
     const nextCaptures = await window.screenieAPI.listCaptures();
     setCaptures(nextCaptures);
-  };
+  });
 
   const saveSettings = async () => {
     const nextSettings: CaptureSettings = {
@@ -164,8 +170,19 @@ function App() {
       }
     };
 
-    const saved = await window.screenieAPI.setSettings(nextSettings);
-    applySettings(saved);
+    try {
+      const saved = await window.screenieAPI.setSettings(nextSettings);
+      applySettings(saved);
+      setSettingsNotice({
+        type: 'success',
+        message: 'Settings saved.'
+      });
+    } catch (error) {
+      setSettingsNotice({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Could not save settings.'
+      });
+    }
   };
 
   const startCapture = async (mode: CaptureMode) => {
@@ -215,7 +232,7 @@ function App() {
       active = false;
       unsubscribe();
     };
-  }, []);
+  }, [loadCaptures, loadSettings]);
 
   const activeHeader = tabHeaders[tab];
   const statusLabel = !lastCaptureStatus
@@ -542,9 +559,12 @@ function App() {
             </section>
 
             <div className="settings-footer">
-              <p>
-                Changes stay local and persist across restart. Save once after adjusting folders, naming, or shortcut bindings.
-              </p>
+              <div className="settings-footer__copy">
+                <p>
+                  Changes stay local and persist across restart. Save once after adjusting folders, naming, or shortcut bindings.
+                </p>
+                {settingsNotice ? <p className={`settings-feedback ${settingsNotice.type}`}>{settingsNotice.message}</p> : null}
+              </div>
               <button type="button" className="save-button" onClick={() => void saveSettings()}>
                 Save settings
               </button>

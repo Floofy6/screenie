@@ -42,7 +42,6 @@ export class HistoryStore {
 
   async add(record: CaptureResult): Promise<CaptureResult> {
     const records = await this.ensureLoaded();
-    const exists = records.find((entry) => entry.id === record.id);
     const nextList = [record, ...records.filter((entry) => entry.id !== record.id)].slice(0, MAX_HISTORY_ITEMS);
     this.cache = nextList;
     await this.persist(nextList);
@@ -55,4 +54,3 @@ export class HistoryStore {
     await this.persist(this.cache);
   }
 }
-

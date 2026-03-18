@@ -14,7 +14,7 @@ import {
   systemPreferences
 } from 'electron';
 import type { CaptureMode, CaptureRequest, CaptureResult, CaptureSettings, RegionSelection } from '@shared/types';
-import { captureActiveWindow, captureArea, captureFullscreen } from './capture/capture-service';
+import { captureActiveWindow, captureArea, captureFullscreen, captureNativeRegion } from './capture/capture-service';
 import { captureRegion, warmRegionOverlay } from './capture/selection-overlay';
 import { SettingsStore } from './settings/settings';
 import { openAnnotationWorkspace } from './annotations';
@@ -60,6 +60,7 @@ const settingsStore = new SettingsStore();
 const historyStore = new HistoryStore();
 let mainWindow: BrowserWindow | null = null;
 let isCapturing = false;
+let isRegionSelectionActive = false;
 let closeBehavior: CaptureSettings['closeBehavior'] = 'close';
 let ipcReady = false;
 
@@ -181,7 +182,6 @@ async function createMainWindow() {
     }
   });
 
-  void mainWindow.loadURL(mainWindowUrl);
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, url) => {
     console.error('renderer load failed', { errorCode, errorDescription, url, candidatePath: mainWindowUrl });
   });
@@ -257,23 +257,42 @@ async function runCapture(request: CaptureRequest): Promise<{ success: boolean; 
 
   isCapturing = true;
   const settings = await settingsStore.get();
+  const shouldRestoreMainWindow = request.mode === 'window' && Boolean(mainWindow?.isVisible());
   try {
+    if (shouldRestoreMainWindow) {
+      mainWindow?.hide();
+      await delay(120);
+    }
+
     let snapshot: { buffer: Buffer; sourceId: string; sourceName: string; width: number; height: number };
     if (request.mode === 'fullscreen') {
       snapshot = await captureFullscreen();
-  } else if (request.mode === 'window') {
+    } else if (request.mode === 'window') {
       snapshot = await captureActiveWindow();
     } else {
-      const rawSelection = await captureRegion({
-        parent: mainWindow,
-        preloadPath,
-        overlayUrl: overlayWindowUrl
-      });
-      if (!rawSelection) {
-        return { success: false, cancelled: true };
+      isRegionSelectionActive = true;
+      try {
+        if (isMac) {
+          const nativeRegionCapture = await captureNativeRegion();
+          if (!nativeRegionCapture) {
+            return { success: false, cancelled: true };
+          }
+          snapshot = nativeRegionCapture;
+        } else {
+          const rawSelection = await captureRegion({
+            parent: mainWindow,
+            preloadPath,
+            overlayUrl: overlayWindowUrl
+          });
+          if (!rawSelection) {
+            return { success: false, cancelled: true };
+          }
+          const normalizedSelection = normalizeRegionSelection(rawSelection);
+          snapshot = await captureArea(normalizedSelection);
+        }
+      } finally {
+        isRegionSelectionActive = false;
       }
-      const normalizedSelection = normalizeRegionSelection(rawSelection);
-      snapshot = await captureArea(normalizedSelection);
       if (request.annotate) {
         const annotated = await openAnnotationWorkspace({
           preloadPath,
@@ -317,26 +336,60 @@ async function runCapture(request: CaptureRequest): Promise<{ success: boolean; 
     mainWindow?.webContents.send('capture:result', payload);
     return payload;
   } finally {
+    if (shouldRestoreMainWindow && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    }
     isCapturing = false;
   }
 }
 
-async function registerShortcuts() {
-  globalShortcut.unregisterAll();
-  const settings = await settingsStore.get();
-  const mapping: Array<{ combo: string; mode: CaptureMode }> = [
+function buildShortcutMappings(settings: CaptureSettings): Array<{ combo: string; mode: CaptureMode }> {
+  return [
     { combo: settings.shortcuts.fullscreen, mode: 'fullscreen' },
     { combo: settings.shortcuts.window, mode: 'window' },
     { combo: settings.shortcuts.region, mode: 'region' }
   ];
+}
+
+async function registerShortcuts(nextSettings?: CaptureSettings) {
+  globalShortcut.unregisterAll();
+  const settings = nextSettings ?? (await settingsStore.get());
+  const mapping = buildShortcutMappings(settings);
+  const failedCombos: string[] = [];
+  const seenCombos = new Set<string>();
 
   for (const mappingItem of mapping) {
-    if (!mappingItem.combo) {
+    const combo = mappingItem.combo.trim();
+    if (!combo) {
       continue;
     }
-    globalShortcut.register(mappingItem.combo, () => {
-      void runCapture({ mode: mappingItem.mode });
-    });
+
+    const normalizedCombo = combo.toLowerCase();
+    if (seenCombos.has(normalizedCombo)) {
+      failedCombos.push(combo);
+      continue;
+    }
+
+    seenCombos.add(normalizedCombo);
+
+    try {
+      const didRegister = globalShortcut.register(combo, () => {
+        void runCapture({ mode: mappingItem.mode });
+      });
+
+      if (!didRegister) {
+        failedCombos.push(combo);
+      }
+    } catch {
+      failedCombos.push(combo);
+    }
+  }
+
+  if (failedCombos.length > 0) {
+    globalShortcut.unregisterAll();
+    throw new Error(
+      `Could not register shortcut${failedCombos.length === 1 ? '' : 's'}: ${failedCombos.join(', ')}.`
+    );
   }
 }
 
@@ -376,10 +429,22 @@ function setupIpc() {
   });
   ipcMain.handle('settings:get', async () => settingsStore.get());
   ipcMain.handle('settings:set', async (_, next: CaptureSettings) => {
+    const previous = await settingsStore.get();
     const applied = await settingsStore.set(next);
-    closeBehavior = applied.closeBehavior;
-    await registerShortcuts();
-    return applied;
+    try {
+      closeBehavior = applied.closeBehavior;
+      await registerShortcuts(applied);
+      return applied;
+    } catch (error) {
+      closeBehavior = previous.closeBehavior;
+      await settingsStore.set(previous);
+      try {
+        await registerShortcuts(previous);
+      } catch (restoreError) {
+        console.error('failed to restore previous shortcuts', restoreError);
+      }
+      throw error;
+    }
   });
 }
 
@@ -392,17 +457,27 @@ app.whenReady().then(async () => {
   await applyWindowCloseBehavior();
   setupIpc();
   await createMainWindow();
-  await registerShortcuts();
-  void warmRegionOverlay({
-    parent: mainWindow,
-    preloadPath,
-    overlayUrl: overlayWindowUrl
-  }).catch((error) => {
-    console.error('region overlay warmup failed', error);
-  });
+  try {
+    await registerShortcuts();
+  } catch (error) {
+    console.error('shortcut registration failed during startup', error);
+  }
+  if (!isMac) {
+    void warmRegionOverlay({
+      parent: mainWindow,
+      preloadPath,
+      overlayUrl: overlayWindowUrl
+    }).catch((error) => {
+      console.error('region overlay warmup failed', error);
+    });
+  }
 });
 
 app.on('activate', () => {
+  if (isRegionSelectionActive) {
+    return;
+  }
+
   if (!mainWindow) {
     void createMainWindow();
     return;
