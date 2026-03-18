@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Screenie Selection</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        cursor: crosshair;
+      }
+      body {
+        background: transparent;
+      }
+      .selection-layer {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.35);
+      }
+      .selection-rect {
+        position: absolute;
+        border: 2px dashed #2f80ff;
+        background: rgba(47, 128, 255, 0.2);
+      }
+      .instruction {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        color: white;
+        font: 13px/1.4 'Trebuchet MS', sans-serif;
+        background: #0b1226;
+        padding: 8px 10px;
+        border-radius: 8px;
+        opacity: 0.85;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="selection-layer" id="layer">
+      <div class="instruction" id="instruction">Drag to select an area. Then use Arrow keys to nudge it, Enter to capture, Esc to cancel.</div>
+      <div class="selection-rect" id="box" style="display: none"></div>
+    </div>
+    <script type="module" src="/overlay.ts"></script>
+  </body>
+</html>

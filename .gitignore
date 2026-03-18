@@ -1,0 +1,24 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Dependency directories
+node_modules
+
+# Build output
+dist
+dist-electron
+coverage
+out
+
+# Electron output
+release
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Misc
+*.local
+.playwright-cli

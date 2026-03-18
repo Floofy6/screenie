@@ -1,0 +1,33 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="156" y1="112" x2="876" y2="920" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF8E63"/>
+      <stop offset="1" stop-color="#FFD36E"/>
+    </linearGradient>
+    <filter id="shadow" x="178" y="182" width="668" height="620" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="24"/>
+      <feGaussianBlur stdDeviation="24"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.160784 0 0 0 0 0.0862745 0 0 0 0 0.027451 0 0 0 0.22 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_1"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_1" result="shape"/>
+    </filter>
+  </defs>
+
+  <rect x="80" y="80" width="864" height="864" rx="228" fill="url(#bg)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="226" y="230" width="572" height="524" rx="142" fill="#18243B"/>
+    <rect x="276" y="278" width="472" height="372" rx="94" fill="#FFF8EE"/>
+
+    <path d="M388 364H332V420" stroke="#18243B" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M636 364H692V420" stroke="#18243B" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M388 564H332V508" stroke="#18243B" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M636 564H692V508" stroke="#18243B" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <circle cx="512" cy="464" r="34" fill="#FF9A61"/>
+  </g>
+
+  <path d="M738 216L754.723 258.277L797 275L754.723 291.723L738 334L721.277 291.723L679 275L721.277 258.277L738 216Z" fill="#FFF8EE"/>
+</svg>
