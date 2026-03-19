@@ -40,7 +40,7 @@ type HighlightCommand = {
 type DrawCommand = PenCommand | RectangleCommand | ArrowCommand | HighlightCommand;
 
 type AnnotationImagePayload = {
-  dataUrl: string;
+  bytes: Uint8Array;
   width: number;
   height: number;
 };
@@ -68,6 +68,7 @@ let image = new Image();
 let imageLoaded = false;
 let sourceWidth = 0;
 let sourceHeight = 0;
+let imageObjectUrl: string | null = null;
 
 const setTool = (next: Tool) => {
   currentTool = next;
@@ -279,17 +280,54 @@ const continueDrawing = (event: PointerEvent) => {
   redraw();
 };
 
+const revokeImageObjectUrl = () => {
+  if (!imageObjectUrl) {
+    return;
+  }
+
+  URL.revokeObjectURL(imageObjectUrl);
+  imageObjectUrl = null;
+};
+
+const renderCanvasToBytes = async (): Promise<Uint8Array | null> => {
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob((nextBlob) => resolve(nextBlob), 'image/png');
+  });
+
+  if (!blob) {
+    return null;
+  }
+
+  const arrayBuffer = await blob.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
+};
+
+const submitCanvasImage = async () => {
+  if (!imageLoaded) {
+    return;
+  }
+
+  const imageBytes = await renderCanvasToBytes();
+  if (!imageBytes) {
+    statusElement.textContent = 'Could not prepare the annotated image.';
+    return;
+  }
+
+  window.screenieMarkupAPI.submit(imageBytes);
+};
+
 const startLoad = async () => {
   const payload = (await window.screenieMarkupAPI.getImage()) as AnnotationImagePayload | null;
-  if (!payload?.dataUrl) {
+  if (!payload?.bytes?.length) {
     statusElement.textContent = 'Failed to load image.';
     return;
   }
 
   image = new Image();
   image.onload = () => {
-    sourceWidth = Math.max(1, image.naturalWidth);
-    sourceHeight = Math.max(1, image.naturalHeight);
+    revokeImageObjectUrl();
+    sourceWidth = Math.max(1, payload.width || image.naturalWidth);
+    sourceHeight = Math.max(1, payload.height || image.naturalHeight);
     const maxWidth = Math.max(520, window.innerWidth - 24);
     const maxHeight = Math.max(360, window.innerHeight - 146);
     const fit = Math.min(1, maxWidth / sourceWidth, maxHeight / sourceHeight);
@@ -305,7 +343,14 @@ const startLoad = async () => {
     redraw();
     statusElement.textContent = `Image loaded (${sourceWidth} x ${sourceHeight}). Tools: 1 Pen, 2 Rectangle, 3 Arrow, 4 Highlight, Cmd/Ctrl+Enter Save.`;
   };
-  image.src = payload.dataUrl;
+  image.onerror = () => {
+    revokeImageObjectUrl();
+    statusElement.textContent = 'Failed to decode image.';
+  };
+  revokeImageObjectUrl();
+  const imageBytes = Uint8Array.from(payload.bytes);
+  imageObjectUrl = URL.createObjectURL(new Blob([imageBytes.buffer], { type: 'image/png' }));
+  image.src = imageObjectUrl;
 };
 
 canvas.addEventListener('pointerdown', beginDrawing);
@@ -326,8 +371,7 @@ clearButton.addEventListener('click', () => {
 });
 
 saveButton.addEventListener('click', () => {
-  const imageDataUrl = canvas.toDataURL('image/png');
-  window.screenieMarkupAPI.submit(imageDataUrl);
+  void submitCanvasImage();
 });
 
 cancelButton.addEventListener('click', () => {
@@ -361,8 +405,8 @@ window.addEventListener('keydown', (event) => {
   }
 
   if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-    const imageDataUrl = canvas.toDataURL('image/png');
-    window.screenieMarkupAPI.submit(imageDataUrl);
+    event.preventDefault();
+    void submitCanvasImage();
     return;
   }
 
@@ -371,6 +415,10 @@ window.addEventListener('keydown', (event) => {
     redraw();
     return;
   }
+});
+
+window.addEventListener('beforeunload', () => {
+  revokeImageObjectUrl();
 });
 
 void startLoad();

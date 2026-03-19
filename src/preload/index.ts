@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcRendererEvent } from 'electron';
 import type { CaptureRequest, CaptureResult, CaptureSettings, RegionSelection } from '@shared/types';
 
-type AnnotationImagePayload = { dataUrl: string; width: number; height: number };
+type AnnotationImagePayload = { bytes: Uint8Array; width: number; height: number };
 
 const api = {
   startCapture: (request: CaptureRequest) => ipcRenderer.invoke('capture:start', request),
@@ -38,6 +38,6 @@ contextBridge.exposeInMainWorld('screenieOverlayAPI', {
 
 contextBridge.exposeInMainWorld('screenieMarkupAPI', {
   getImage: () => ipcRenderer.invoke('annotation:get-image') as Promise<AnnotationImagePayload | null>,
-  submit: (imageDataUrl: string) => ipcRenderer.send('annotation:save', imageDataUrl),
+  submit: (imageBytes: Uint8Array) => ipcRenderer.send('annotation:save', imageBytes),
   cancel: () => ipcRenderer.send('annotation:cancel')
 });

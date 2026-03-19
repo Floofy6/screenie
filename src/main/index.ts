@@ -18,6 +18,8 @@ import { captureActiveWindow, captureArea, captureFullscreen, captureNativeRegio
 import { captureRegion, warmRegionOverlay } from './capture/selection-overlay';
 import { SettingsStore } from './settings/settings';
 import { openAnnotationWorkspace } from './annotations';
+import { isPlainObject, requireSenderWindow, requireString } from './security/ipc';
+import { attachWindowSecurityGuards, buildSecureWebPreferences } from './security/window-security';
 import { HistoryStore } from './storage/history';
 import { writeCaptureImage } from './storage/storage';
 
@@ -64,6 +66,8 @@ let isRegionSelectionActive = false;
 let closeBehavior: CaptureSettings['closeBehavior'] = 'close';
 let ipcReady = false;
 
+app.setName('Screenie');
+
 function resolveAppIconPath() {
   const candidates = [
     join(process.cwd(), 'resources', 'icon.png'),
@@ -76,6 +80,69 @@ function resolveAppIconPath() {
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function assertCaptureMode(value: unknown): CaptureMode {
+  if (value === 'fullscreen' || value === 'window' || value === 'region') {
+    return value;
+  }
+
+  throw new Error('Invalid capture mode.');
+}
+
+function assertCloseBehavior(value: unknown): CaptureSettings['closeBehavior'] {
+  if (value === 'close' || value === 'hide-to-tray') {
+    return value;
+  }
+
+  throw new Error('Invalid close behavior.');
+}
+
+function assertCaptureRequest(value: unknown): CaptureRequest {
+  if (!isPlainObject(value)) {
+    throw new Error('Invalid capture request.');
+  }
+
+  const mode = assertCaptureMode(value.mode);
+  const annotate = typeof value.annotate === 'boolean' ? value.annotate : false;
+  return annotate ? { mode, annotate } : { mode };
+}
+
+function assertShortcutValue(value: unknown, fieldName: string): string {
+  return requireString(value, fieldName, { allowEmpty: true, maxLength: 128 });
+}
+
+function assertCaptureSettings(value: unknown): CaptureSettings {
+  if (!isPlainObject(value)) {
+    throw new Error('Invalid settings payload.');
+  }
+
+  if (!isPlainObject(value.shortcuts)) {
+    throw new Error('Invalid shortcuts payload.');
+  }
+
+  const filenameTemplate = requireString(value.filenameTemplate, 'filename template', {
+    allowEmpty: true,
+    maxLength: 128
+  });
+  if (filenameTemplate.includes('..') || /[\\/]/.test(filenameTemplate)) {
+    throw new Error('Filename template cannot contain path separators.');
+  }
+
+  return {
+    outputDirectory: requireString(value.outputDirectory, 'output directory', {
+      allowEmpty: true,
+      maxLength: 1024
+    }),
+    filenameTemplate,
+    defaultMode: assertCaptureMode(value.defaultMode),
+    closeBehavior: assertCloseBehavior(value.closeBehavior),
+    shortcuts: {
+      fullscreen: assertShortcutValue(value.shortcuts.fullscreen, 'fullscreen shortcut'),
+      window: assertShortcutValue(value.shortcuts.window, 'window shortcut'),
+      region: assertShortcutValue(value.shortcuts.region, 'region shortcut')
+    }
+  };
 }
 
 function buildWindowErrorHtml(title: string, detail: string) {
@@ -175,12 +242,9 @@ async function createMainWindow() {
     minHeight: 560,
     backgroundColor: '#101624',
     autoHideMenuBar: true,
-    webPreferences: {
-      preload: preloadPath,
-      contextIsolation: true,
-      nodeIntegration: false
-    }
+    webPreferences: buildSecureWebPreferences(preloadPath)
   });
+  attachWindowSecurityGuards(mainWindow, mainWindowUrl);
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, url) => {
     console.error('renderer load failed', { errorCode, errorDescription, url, candidatePath: mainWindowUrl });
@@ -398,24 +462,35 @@ function setupIpc() {
     return;
   }
   ipcReady = true;
-  ipcMain.handle('capture:start', async (_, request: CaptureRequest) => runCapture(request));
-  ipcMain.handle('captures:list', async () => historyStore.list());
-  ipcMain.handle('captures:remove', async (_, id: string) => {
-    await historyStore.remove(id);
+  ipcMain.handle('capture:start', async (event, request: unknown) => {
+    requireSenderWindow(event, mainWindow, 'capture:start');
+    return runCapture(assertCaptureRequest(request));
   });
-  ipcMain.handle('captures:open', async (_, id: string) => {
+  ipcMain.handle('captures:list', async (event) => {
+    requireSenderWindow(event, mainWindow, 'captures:list');
+    return historyStore.list();
+  });
+  ipcMain.handle('captures:remove', async (event, id: unknown) => {
+    requireSenderWindow(event, mainWindow, 'captures:remove');
+    await historyStore.remove(requireString(id, 'capture id', { maxLength: 128 }));
+  });
+  ipcMain.handle('captures:open', async (event, id: unknown) => {
+    requireSenderWindow(event, mainWindow, 'captures:open');
+    const captureId = requireString(id, 'capture id', { maxLength: 128 });
     const captures = await historyStore.list();
-    const hit = captures.find((entry) => entry.id === id);
+    const hit = captures.find((entry) => entry.id === captureId);
     if (!hit) {
       return;
     }
     shell.showItemInFolder(hit.filePath);
   });
-  ipcMain.handle('captures:open-folder', async () => {
+  ipcMain.handle('captures:open-folder', async (event) => {
+    requireSenderWindow(event, mainWindow, 'captures:open-folder');
     const settings = await settingsStore.get();
     await shell.openPath(settings.outputDirectory);
   });
-  ipcMain.handle('settings:choose-output-folder', async () => {
+  ipcMain.handle('settings:choose-output-folder', async (event) => {
+    requireSenderWindow(event, mainWindow, 'settings:choose-output-folder');
     const settings = await settingsStore.get();
     const result = await dialog.showOpenDialog({
       title: 'Choose output folder',
@@ -427,10 +502,15 @@ function setupIpc() {
     }
     return result.filePaths[0];
   });
-  ipcMain.handle('settings:get', async () => settingsStore.get());
-  ipcMain.handle('settings:set', async (_, next: CaptureSettings) => {
+  ipcMain.handle('settings:get', async (event) => {
+    requireSenderWindow(event, mainWindow, 'settings:get');
+    return settingsStore.get();
+  });
+  ipcMain.handle('settings:set', async (event, next: unknown) => {
+    requireSenderWindow(event, mainWindow, 'settings:set');
+    const validatedSettings = assertCaptureSettings(next);
     const previous = await settingsStore.get();
-    const applied = await settingsStore.set(next);
+    const applied = await settingsStore.set(validatedSettings);
     try {
       closeBehavior = applied.closeBehavior;
       await registerShortcuts(applied);

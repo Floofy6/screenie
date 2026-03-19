@@ -21,8 +21,8 @@ declare global {
       onPrepareSelection: (callback: (payload: { displayId?: number }) => void) => () => void;
     };
     screenieMarkupAPI: {
-      getImage: () => Promise<{ dataUrl: string; width: number; height: number } | null>;
-      submit: (imageDataUrl: string) => void;
+      getImage: () => Promise<{ bytes: Uint8Array; width: number; height: number } | null>;
+      submit: (imageBytes: Uint8Array) => void;
       cancel: () => void;
     };
   }

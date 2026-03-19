@@ -1,5 +1,7 @@
 import { BrowserWindow, ipcMain, screen } from 'electron';
 import type { RegionSelection } from '@shared/types';
+import { isPlainObject, isSenderWindow, toFiniteNumber } from '../security/ipc';
+import { attachWindowSecurityGuards, buildSecureWebPreferences } from '../security/window-security';
 
 type SelectionRequest = RegionSelection;
 
@@ -18,6 +20,38 @@ function buildOverlayUrl(base: string): string {
 
 function getTargetDisplay() {
   return screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+}
+
+function normalizeSelectionRequest(raw: unknown, scaleFactor: number): SelectionRequest | null {
+  if (!isPlainObject(raw)) {
+    return null;
+  }
+
+  const x = toFiniteNumber(raw.x);
+  const y = toFiniteNumber(raw.y);
+  const width = toFiniteNumber(raw.width);
+  const height = toFiniteNumber(raw.height);
+  if (x == null || y == null || width == null || height == null || width < 1 || height < 1) {
+    return null;
+  }
+
+  const selection: SelectionRequest = {
+    x: Math.max(0, Math.round(x)),
+    y: Math.max(0, Math.round(y)),
+    width: Math.max(1, Math.round(width)),
+    height: Math.max(1, Math.round(height)),
+    dpr: (() => {
+      const dpr = toFiniteNumber(raw.dpr);
+      return dpr != null && dpr > 0 ? dpr : scaleFactor;
+    })()
+  };
+
+  const displayId = toFiniteNumber(raw.displayId);
+  if (displayId != null) {
+    selection.displayId = Math.round(displayId);
+  }
+
+  return selection;
 }
 
 async function ensureOverlayWindow(options: SelectionOptions, targetDisplay = getTargetDisplay()): Promise<BrowserWindow> {
@@ -54,12 +88,9 @@ async function ensureOverlayWindow(options: SelectionOptions, targetDisplay = ge
     movable: false,
     minimizable: false,
     maximizable: false,
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      preload: options.preloadPath
-    }
+    webPreferences: buildSecureWebPreferences(options.preloadPath)
   });
+  attachWindowSecurityGuards(overlayWindow, options.overlayUrl);
 
   overlayWindow.on('closed', () => {
     overlayWindow = null;
@@ -106,26 +137,26 @@ export async function captureRegion(options: SelectionOptions): Promise<Selectio
       resolve(selection);
     };
 
-    const onSelect = (_event: Electron.IpcMainEvent, raw: SelectionRequest) => {
-      if (!raw || raw.width < 1 || raw.height < 1) {
-        done(null);
+    const onSelect = (event: Electron.IpcMainEvent, raw: unknown) => {
+      if (!isSenderWindow(event, window)) {
         return;
       }
-      const selection: SelectionRequest = {
-        x: Math.max(0, Math.round(raw.x)),
-        y: Math.max(0, Math.round(raw.y)),
-        width: Math.max(1, Math.round(raw.width)),
-        height: Math.max(1, Math.round(raw.height)),
-        dpr: Number(raw.dpr) > 0 ? Number(raw.dpr) : targetDisplay.scaleFactor
-      };
-      const parsedDisplayId = Number(raw.displayId);
-      if (Number.isFinite(parsedDisplayId)) {
-        selection.displayId = parsedDisplayId;
+
+      const selection = normalizeSelectionRequest(raw, targetDisplay.scaleFactor);
+      if (!selection) {
+        done(null);
+        return;
       }
       done(selection);
     };
 
-    const onCancel = () => done(null);
+    const onCancel = (event?: Electron.IpcMainEvent) => {
+      if (event && !isSenderWindow(event, window)) {
+        return;
+      }
+
+      done(null);
+    };
     ipcMain.on('capture:region:selected', onSelect);
     ipcMain.on('capture:region:cancelled', onCancel);
     window.on('closed', onCancel);

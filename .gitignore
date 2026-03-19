@@ -11,6 +11,7 @@ dist
 dist-electron
 coverage
 out
+.electron-dev
 
 # Electron output
 release
