@@ -64,6 +64,62 @@ function normalizeWindowText(value: string): string {
 }
 
 async function getFrontmostWindowHint(): Promise<FrontmostWindowHint | null> {
+  if (process.platform === 'win32') {
+    const script = `
+      Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class NativeMethods {
+  [DllImport("user32.dll")]
+  public static extern IntPtr GetForegroundWindow();
+
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+  public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+
+  [DllImport("user32.dll")]
+  public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+}
+"@
+
+      $hwnd = [NativeMethods]::GetForegroundWindow()
+      if ($hwnd -eq [IntPtr]::Zero) {
+        return
+      }
+
+      $buffer = New-Object System.Text.StringBuilder 1024
+      [void][NativeMethods]::GetWindowText($hwnd, $buffer, $buffer.Capacity)
+
+      $processId = 0
+      [void][NativeMethods]::GetWindowThreadProcessId($hwnd, [ref]$processId)
+
+      $processName = ""
+      if ($processId -gt 0) {
+        try {
+          $processName = (Get-Process -Id $processId -ErrorAction Stop).ProcessName
+        } catch {
+          $processName = ""
+        }
+      }
+
+      Write-Output $processName
+      Write-Output $buffer.ToString()
+    `;
+
+    try {
+      const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script]);
+      const [rawAppName = '', rawTitle = ''] = stdout.split(/\r?\n/, 2);
+      const appName = rawAppName.trim();
+      const title = rawTitle.trim();
+
+      return appName || title ? { appName, title } : null;
+    } catch (error) {
+      console.warn('active window lookup failed', error);
+      return null;
+    }
+  }
+
   if (process.platform !== 'darwin') {
     return null;
   }

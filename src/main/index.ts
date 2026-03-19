@@ -25,6 +25,7 @@ import { writeCaptureImage } from './storage/storage';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isMac = process.platform === 'darwin';
+const isWindows = process.platform === 'win32';
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
 const rendererDevUrl = process.env.ELECTRON_RENDERER_URL;
 const preloadPath = (() => {
@@ -67,6 +68,9 @@ let closeBehavior: CaptureSettings['closeBehavior'] = 'close';
 let ipcReady = false;
 
 app.setName('Screenie');
+if (isWindows) {
+  app.setAppUserModelId('com.screenie.app');
+}
 
 function resolveAppIconPath() {
   const candidates = [

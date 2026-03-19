@@ -2,14 +2,16 @@
   "name": "screenie",
   "version": "0.1.0",
   "private": true,
-  "description": "Local macOS-first screenshot utility scaffold",
+  "description": "Local-first screenshot utility scaffold for macOS and Windows 11",
   "type": "module",
   "main": "dist-electron/main/index.js",
   "scripts": {
     "dev": "node scripts/dev.js",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "package": "npm run build && electron-builder --mac",
+    "package": "npm run build && electron-builder",
+    "package:mac": "npm run build && electron-builder --mac",
+    "package:win": "npm run build && electron-builder --win nsis",
     "make": "npm run build && electron-builder --mac --arm64 --x64",
     "lint": "eslint . --ext .ts,.tsx",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -57,6 +59,15 @@
       "icon": "resources/icon.icns",
       "hardenedRuntime": true,
       "gatekeeperAssess": false
+    },
+    "win": {
+      "target": ["nsis"],
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
     },
     "afterSign": "scripts/after-sign.js"
   }
