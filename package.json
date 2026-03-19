@@ -2,24 +2,31 @@
   "name": "screenie",
   "version": "0.1.0",
   "private": true,
+  "author": "Floofy6",
   "description": "Local-first screenshot utility scaffold for macOS and Windows 11",
+  "homepage": "https://github.com/Floofy6/screenie",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Floofy6/screenie.git"
+  },
   "type": "module",
   "main": "dist-electron/main/index.js",
   "scripts": {
+    "assets:win-icon": "python3 scripts/generate-win-icon.py",
     "dev": "node scripts/dev.js",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "package": "npm run build && electron-builder",
     "package:mac": "npm run build && electron-builder --mac",
-    "package:win": "npm run build && electron-builder --win nsis",
+    "package:win": "npm run assets:win-icon && npm run build && electron-builder --win nsis --x64 --arm64",
+    "package:win:x64": "npm run assets:win-icon && npm run build && electron-builder --win nsis --x64",
+    "package:win:arm64": "npm run assets:win-icon && npm run build && electron-builder --win nsis --arm64",
     "make": "npm run build && electron-builder --mac --arm64 --x64",
     "lint": "eslint . --ext .ts,.tsx",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "verify": "npm run lint && npm run typecheck && npm run build"
   },
-  "dependencies": {
-    "electron": "^34.0.2"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
@@ -27,6 +34,7 @@
     "@typescript-eslint/eslint-plugin": "^8.57.1",
     "@typescript-eslint/parser": "^8.57.1",
     "@vitejs/plugin-react": "^5.0.3",
+    "electron": "^34.0.2",
     "electron-builder": "^26.8.1",
     "electron-vite": "^5.0.0",
     "eslint": "^9.33.0",
@@ -62,13 +70,21 @@
     },
     "win": {
       "target": ["nsis"],
+      "icon": "resources/icon.ico",
+      "requestedExecutionLevel": "asInvoker",
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Screenie",
+      "installerIcon": "resources/icon.ico",
+      "installerHeaderIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico",
       "allowToChangeInstallationDirectory": true,
       "perMachine": false
     },
-    "afterSign": "scripts/after-sign.js"
+    "afterSign": "scripts/after-sign.cjs"
   }
 }

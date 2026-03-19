@@ -28,6 +28,7 @@ export async function openAnnotationWorkspace(params: {
   preloadPath: string;
   annotationUrl: string;
   imageBuffer: Buffer;
+  windowIconPath?: string;
 }): Promise<Buffer | null> {
   const image = nativeImage.createFromBuffer(params.imageBuffer);
   const imageSize = image.getSize();
@@ -43,6 +44,7 @@ export async function openAnnotationWorkspace(params: {
     title: 'Annotate Screenshot',
     show: false,
     autoHideMenuBar: true,
+    icon: params.windowIconPath,
     webPreferences: buildSecureWebPreferences(params.preloadPath)
   });
   attachWindowSecurityGuards(annotationWindow, params.annotationUrl);

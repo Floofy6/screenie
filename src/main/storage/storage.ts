@@ -116,10 +116,10 @@ export function settingsTemplatePreview(template: string): string {
 
 export function buildDefaultSettings(): CaptureSettings {
   return {
-    outputDirectory: `${os.homedir()}/Pictures/screenie`,
+    outputDirectory: path.join(os.homedir(), 'Pictures', 'screenie'),
     filenameTemplate: DEFAULT_FILENAME_TEMPLATE,
     defaultMode: 'fullscreen',
-    closeBehavior: 'close',
+    closeBehavior: process.platform === 'win32' ? 'hide-to-tray' : 'close',
     shortcuts: {
       fullscreen: 'CommandOrControl+Shift+1',
       window: 'CommandOrControl+Shift+2',

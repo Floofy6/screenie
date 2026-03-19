@@ -9,9 +9,11 @@ import {
   dialog,
   globalShortcut,
   ipcMain,
+  Menu,
   nativeImage,
   shell,
-  systemPreferences
+  systemPreferences,
+  Tray
 } from 'electron';
 import type { CaptureMode, CaptureRequest, CaptureResult, CaptureSettings, RegionSelection } from '@shared/types';
 import { captureActiveWindow, captureArea, captureFullscreen, captureNativeRegion } from './capture/capture-service';
@@ -62,20 +64,28 @@ const annotationWindowUrl = resolveRendererPageUrl('annotation.html');
 const settingsStore = new SettingsStore();
 const historyStore = new HistoryStore();
 let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
 let isCapturing = false;
 let isRegionSelectionActive = false;
 let closeBehavior: CaptureSettings['closeBehavior'] = 'close';
 let ipcReady = false;
+let isQuitting = false;
 
 app.setName('Screenie');
 if (isWindows) {
   app.setAppUserModelId('com.screenie.app');
 }
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
 
 function resolveAppIconPath() {
   const candidates = [
+    ...(isWindows ? [join(process.cwd(), 'resources', 'icon.ico'), join(app.getAppPath(), 'resources', 'icon.ico')] : []),
     join(process.cwd(), 'resources', 'icon.png'),
     join(app.getAppPath(), 'resources', 'icon.png'),
+    ...(isWindows ? [join(process.resourcesPath, 'resources', 'icon.ico')] : []),
     join(process.resourcesPath, 'resources', 'icon.png')
   ];
 
@@ -237,6 +247,102 @@ async function applyWindowCloseBehavior() {
   closeBehavior = next.closeBehavior;
 }
 
+function getAppIconImage() {
+  const iconPath = resolveAppIconPath();
+  if (!iconPath) {
+    return undefined;
+  }
+
+  const image = nativeImage.createFromPath(iconPath);
+  if (image.isEmpty()) {
+    return undefined;
+  }
+
+  return isWindows ? image.resize({ width: 16, height: 16 }) : image;
+}
+
+function getWindowIconPath() {
+  return isWindows ? resolveAppIconPath() ?? undefined : undefined;
+}
+
+async function showMainWindow() {
+  if (!mainWindow) {
+    await createMainWindow();
+    return;
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function createTray() {
+  if (!isWindows || tray) {
+    return;
+  }
+
+  const iconImage = getAppIconImage();
+  if (!iconImage) {
+    console.warn('tray icon could not be created');
+    return;
+  }
+
+  tray = new Tray(iconImage);
+  tray.setToolTip('Screenie');
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Open Screenie',
+      click: () => {
+        void showMainWindow();
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Capture Fullscreen',
+      click: () => {
+        void runCapture({ mode: 'fullscreen' });
+      }
+    },
+    {
+      label: 'Capture Window',
+      click: () => {
+        void runCapture({ mode: 'window' });
+      }
+    },
+    {
+      label: 'Capture Region',
+      click: () => {
+        void runCapture({ mode: 'region' });
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Open Output Folder',
+      click: async () => {
+        const settings = await settingsStore.get();
+        await shell.openPath(settings.outputDirectory);
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      }
+    }
+  ]);
+  tray.setContextMenu(contextMenu);
+  tray.on('click', () => {
+    void showMainWindow();
+  });
+  tray.on('double-click', () => {
+    void showMainWindow();
+  });
+}
+
 async function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 460,
@@ -246,6 +352,7 @@ async function createMainWindow() {
     minHeight: 560,
     backgroundColor: '#101624',
     autoHideMenuBar: true,
+    icon: getWindowIconPath(),
     webPreferences: buildSecureWebPreferences(preloadPath)
   });
   attachWindowSecurityGuards(mainWindow, mainWindowUrl);
@@ -258,7 +365,7 @@ async function createMainWindow() {
   });
 
   mainWindow.on('close', (event) => {
-    if (closeBehavior === 'hide-to-tray') {
+    if (!isQuitting && closeBehavior === 'hide-to-tray') {
       event.preventDefault();
       mainWindow?.hide();
     }
@@ -365,7 +472,8 @@ async function runCapture(request: CaptureRequest): Promise<{ success: boolean; 
         const annotated = await openAnnotationWorkspace({
           preloadPath,
           annotationUrl: annotationWindowUrl,
-          imageBuffer: snapshot.buffer
+          imageBuffer: snapshot.buffer,
+          windowIconPath: getWindowIconPath()
         });
         if (annotated) {
           const annotatedImage = nativeImage.createFromBuffer(annotated);
@@ -533,6 +641,9 @@ function setupIpc() {
 }
 
 app.whenReady().then(async () => {
+  if (!gotSingleInstanceLock) {
+    return;
+  }
   const iconPath = resolveAppIconPath();
   if (iconPath && isMac) {
     app.dock.setIcon(iconPath);
@@ -540,6 +651,7 @@ app.whenReady().then(async () => {
   await ensureScreenPermission();
   await applyWindowCloseBehavior();
   setupIpc();
+  createTray();
   await createMainWindow();
   try {
     await registerShortcuts();
@@ -557,16 +669,20 @@ app.whenReady().then(async () => {
   }
 });
 
+app.on('second-instance', () => {
+  if (isRegionSelectionActive) {
+    return;
+  }
+
+  void showMainWindow();
+});
+
 app.on('activate', () => {
   if (isRegionSelectionActive) {
     return;
   }
 
-  if (!mainWindow) {
-    void createMainWindow();
-    return;
-  }
-  mainWindow?.show();
+  void showMainWindow();
 });
 
 app.on('window-all-closed', () => {
@@ -576,5 +692,6 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
   globalShortcut.unregisterAll();
 });

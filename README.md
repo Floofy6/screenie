@@ -1,6 +1,6 @@
 # screenie
 
-Local-first screenshot utility scaffold (Electron + React + TypeScript) with active work toward macOS and Windows 11 support.
+Local-first screenshot utility (Electron + React + TypeScript) for macOS and Windows 11.
 
 ## What you get
 
@@ -35,8 +35,16 @@ npm run package:mac
 npm run package:win
 ```
 
+Windows-only packaging shortcuts:
+
+```bash
+npm run package:win:x64
+npm run package:win:arm64
+```
+
 ## Notes
 
 - macOS requires Screen Recording permission on first run.
-- Windows 11 uses the Electron desktop capture path for fullscreen, window, and region capture. Build and installer support now live in the Windows branch, but the packaged Windows app should still be smoke-tested on an actual Windows 11 machine.
+- Windows 11 uses the Electron desktop capture path for fullscreen, window, and region capture.
+- Windows packaging now produces `x64` and `arm64` NSIS installers with a native `.ico` app icon, but the packaged app should still be smoke-tested on an actual Windows 11 machine before calling parity complete.
 - In this scaffold, capture save is local-only (no automatic network upload).

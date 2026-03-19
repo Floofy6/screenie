@@ -70,7 +70,7 @@ const tabHeaders: Record<TabId, { kicker: string; title: string; description: st
 
 const closeBehaviorLabels: Record<WindowCloseBehavior, string> = {
   close: 'Fully quit when the window closes',
-  'hide-to-tray': 'Keep running in the tray when closed'
+  'hide-to-tray': 'Keep running in the system tray when closed'
 };
 
 const getFilename = (filePath: string) => filePath.split(/[\\/]/).pop() ?? filePath;
@@ -108,6 +108,9 @@ const statusClassName = (payload: CaptureState | null) => {
 };
 
 function App() {
+  const isMacPlatform = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac');
+  const fileManagerName = isMacPlatform ? 'Finder' : 'File Explorer';
+  const revealVerb = isMacPlatform ? 'Reveal' : 'Show in File Explorer';
   const [tab, setTab] = useState<TabId>('capture');
   const [captures, setCaptures] = useState<CaptureResult[]>([]);
   const [lastCaptureStatus, setLastCaptureStatus] = useState<CaptureState | null>(null);
@@ -118,7 +121,7 @@ function App() {
   const [hotWindow, setHotWindow] = useState('');
   const [hotRegion, setHotRegion] = useState('');
   const [directory, setDirectory] = useState('');
-  const [closeBehavior, setCloseBehavior] = useState<WindowCloseBehavior>('hide-to-tray');
+  const [closeBehavior, setCloseBehavior] = useState<WindowCloseBehavior>(isMacPlatform ? 'close' : 'hide-to-tray');
   const [settingsNotice, setSettingsNotice] = useState<SettingsNotice | null>(null);
 
   const sortedCaptures = useMemo(
@@ -234,7 +237,13 @@ function App() {
     };
   }, [loadCaptures, loadSettings]);
 
-  const activeHeader = tabHeaders[tab];
+  const activeHeader =
+    tab === 'history'
+      ? {
+          ...tabHeaders.history,
+          description: `Every screenshot gets a clearer card, quicker scanning, and one-click access back into ${fileManagerName}.`
+        }
+      : tabHeaders[tab];
   const statusLabel = !lastCaptureStatus
     ? 'Ready for capture'
     : lastCaptureStatus.cancelled
@@ -385,7 +394,7 @@ function App() {
                       <span>{formatBytes(latestCapture.sizeBytes)}</span>
                     </div>
                     <button type="button" className="ghost-button" onClick={() => void openCapture(latestCapture.id)}>
-                      Reveal latest capture
+                      {isMacPlatform ? 'Reveal latest capture' : 'Show latest capture'}
                     </button>
                   </article>
                 ) : (
@@ -434,7 +443,7 @@ function App() {
 
                     <div className="history-actions">
                       <button type="button" className="ghost-button" onClick={() => void openCapture(capture.id)}>
-                        Reveal
+                        {revealVerb}
                       </button>
                       <button type="button" className="ghost-button danger" onClick={() => void removeCapture(capture.id)}>
                         Remove
@@ -465,11 +474,11 @@ function App() {
 
               <label className="field">
                 <span className="field__label">Output folder</span>
-                <span className="field__hint">Use Finder to pick the destination or type it directly.</span>
+                <span className="field__hint">Use {fileManagerName} to pick the destination or type it directly.</span>
                 <div className="field__row">
                   <input value={directory} onChange={(event) => setDirectory(event.target.value)} />
                   <button type="button" className="secondary-button" onClick={() => void chooseOutputFolder()}>
-                    Choose in Finder
+                    {isMacPlatform ? 'Choose in Finder' : 'Choose in File Explorer'}
                   </button>
                 </div>
               </label>
